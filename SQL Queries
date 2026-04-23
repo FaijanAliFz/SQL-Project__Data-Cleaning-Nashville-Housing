@@ -1,0 +1,108 @@
+/*
+=====================================================
+Data Cleaning in SQL – Nashville Housing Dataset
+=====================================================
+*/
+
+SELECT *
+FROM PortfolioProject.dbo.NashvilleHousing;
+
+
+-----------------------------------------------------
+-- 1. Standardize Date Format (SAFE APPROACH)
+-----------------------------------------------------
+
+ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+ADD SaleDateConverted DATE;
+
+UPDATE PortfolioProject.dbo.NashvilleHousing
+SET SaleDateConverted = CONVERT(DATE, SaleDate);
+
+
+-----------------------------------------------------
+-- 2. Populate Missing Property Address
+-----------------------------------------------------
+
+UPDATE a
+SET a.PropertyAddress = ISNULL(a.PropertyAddress, b.PropertyAddress)
+FROM PortfolioProject.dbo.NashvilleHousing a
+JOIN PortfolioProject.dbo.NashvilleHousing b
+    ON a.ParcelID = b.ParcelID
+    AND a.[UniqueID ] <> b.[UniqueID ]
+WHERE a.PropertyAddress IS NULL;
+
+
+-----------------------------------------------------
+-- 3. Split Property Address (Address + City)
+-----------------------------------------------------
+
+ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+ADD PropertySplitAddress NVARCHAR(255),
+    PropertySplitCity NVARCHAR(255);
+
+UPDATE PortfolioProject.dbo.NashvilleHousing
+SET PropertySplitAddress = SUBSTRING(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) - 1),
+    PropertySplitCity = SUBSTRING(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1, LEN(PropertyAddress));
+
+
+-----------------------------------------------------
+-- 4. Split Owner Address (Address + City + State)
+-----------------------------------------------------
+
+ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+ADD OwnerSplitAddress NVARCHAR(255),
+    OwnerSplitCity NVARCHAR(255),
+    OwnerSplitState NVARCHAR(255);
+
+UPDATE PortfolioProject.dbo.NashvilleHousing
+SET OwnerSplitAddress = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 3),
+    OwnerSplitCity    = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 2),
+    OwnerSplitState   = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 1);
+
+
+-----------------------------------------------------
+-- 5. Standardize SoldAsVacant (Y/N → Yes/No)
+-----------------------------------------------------
+
+UPDATE PortfolioProject.dbo.NashvilleHousing
+SET SoldAsVacant = CASE 
+    WHEN SoldAsVacant = 'Y' THEN 'Yes'
+    WHEN SoldAsVacant = 'N' THEN 'No'
+    ELSE SoldAsVacant
+END;
+
+
+-----------------------------------------------------
+-- 6. Remove Duplicates (SAFE CHECK FIRST)
+-----------------------------------------------------
+
+WITH RowNumCTE AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY ParcelID, PropertyAddress, SalePrice, SaleDate, LegalReference
+            ORDER BY [UniqueID ]
+        ) AS row_num
+    FROM PortfolioProject.dbo.NashvilleHousing
+)
+
+-- Preview duplicates
+SELECT *
+FROM RowNumCTE
+WHERE row_num > 1;
+
+-- Uncomment ONLY after verification
+-- DELETE FROM RowNumCTE
+-- WHERE row_num > 1;
+
+
+-----------------------------------------------------
+-- 7. Drop Unused Columns (FINAL STEP)
+-----------------------------------------------------
+
+-- Uncomment only when sure
+
+-- ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+-- DROP COLUMN OwnerAddress, TaxDistrict, PropertyAddress;
+
+-- ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+-- DROP COLUMN SaleDate;
